@@ -10,7 +10,8 @@ A single source of truth for Van Cortlandt Park's bench adoption program (500+ b
 | Layer | Choice |
 |---|---|
 | Database + API | [Supabase](https://supabase.com) (Postgres, auto-generated REST API, Auth, Storage) |
-| Map (frontend, next) | Google Maps JavaScript API |
+| Frontend | Next.js ([`web/`](web/README.md)) |
+| Map | MapLibre GL JS + MapTiler styles (outdoor and satellite) |
 
 ## Backend layout
 
@@ -106,16 +107,18 @@ Staff sign in with Supabase Auth and can also read and edit the `benches` and `a
    insert into public.staff (user_id) values ('<user uuid>');
    ```
 
-## Notes for the Google Maps frontend
+## Frontend
 
-- Use the **Maps JavaScript API** with **Advanced Markers**, which needs a **Map ID** created in Google Cloud Console. Use **`@googlemaps/markerclusterer`** so 500 pins stay readable when zoomed out.
-- Restrict the API key to your site's domains (HTTP referrer restriction) and to the Maps JavaScript API only. The key is visible in the browser.
-- Coordinates are plain `lat`/`lng` doubles, which pass straight into `{ lat, lng }` markers. The database rejects points outside a box around Van Cortlandt Park.
-- Suggested legend: available = green, adopted = red, pending = orange, unavailable = yellow, unsurveyed = gray.
+See [web/README.md](web/README.md). In short: `cd web && cp .env.example .env.local`, fill in
+the Supabase URL + publishable key and a MapTiler key, then `npm install && npm run dev`.
+
+- Restrict the MapTiler key to your site's origins (MapTiler Cloud → API keys → Allowed HTTP origins). It is visible in the browser.
+- Legend: available = green, adopted = red, pending = orange, not available = yellow, not surveyed = gray.
 
 ## Known gaps / next steps
 
 - **Real bench inventory.** The seed locations are placeholders. Real coordinates are needed, either from the park or collected by walking the park with a phone.
-- **Future terms.** A bench with an approved term that hasn't started yet shows as `adopted` (with `adopted_from` in the future), so the frontend should say "Adopted from …".
+- **Future terms.** A bench with an approved term that hasn't started yet shows as `adopted`; the panel labels the term "Starts …".
+- **Staff screen.** Approving requests currently happens in the Supabase dashboard or via `review_adoption`; a staff page is next.
 - Confirmation emails to donors (e.g. Supabase Edge Function + Resend).
 - Spam protection on `request_adoption` beyond the per-email cap (e.g. a CAPTCHA). Staff approval is the main safeguard.
