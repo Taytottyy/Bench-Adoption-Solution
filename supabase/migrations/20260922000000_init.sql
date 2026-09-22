@@ -27,7 +27,7 @@ create type public.adoption_status as enum (
   'cancelled'   -- withdrawn or ended early
 );
 
--- What the map shows. Mirrors the legend of Portland's Adopt-a-Bench map.
+-- What the map shows (one color per status in the legend).
 create type public.bench_map_status as enum (
   'available',
   'adopted',

@@ -5,9 +5,6 @@ A single source of truth for Van Cortlandt Park's bench adoption program (500+ b
 - **View** every bench on a map: available, adopted (by whom, until when), pending, or unavailable.
 - **Adopt** a bench by submitting a request, which park staff approve. There is no payment step.
 
-The layout is inspired by Portland Parks & Recreation's
-[Adopt-a-Bench map](https://pdx.maps.arcgis.com/apps/webappviewer/index.html?id=1ddb6a474f2843d981d551c75d002b94).
-
 ## Stack
 
 | Layer | Choice |
@@ -114,7 +111,7 @@ Staff sign in with Supabase Auth and can also read and edit the `benches` and `a
 - Use the **Maps JavaScript API** with **Advanced Markers**, which needs a **Map ID** created in Google Cloud Console. Use **`@googlemaps/markerclusterer`** so 500 pins stay readable when zoomed out.
 - Restrict the API key to your site's domains (HTTP referrer restriction) and to the Maps JavaScript API only. The key is visible in the browser.
 - Coordinates are plain `lat`/`lng` doubles, which pass straight into `{ lat, lng }` markers. The database rejects points outside a box around Van Cortlandt Park.
-- Suggested legend, as on Portland's map: available = green, adopted = red, pending = orange, unavailable = yellow, unsurveyed = gray.
+- Suggested legend: available = green, adopted = red, pending = orange, unavailable = yellow, unsurveyed = gray.
 
 ## Known gaps / next steps
 
