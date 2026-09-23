@@ -5,7 +5,8 @@ A single source of truth for Van Cortlandt Park's bench adoption program (500+ b
 - **View** every bench on a map: available, adopted (by whom, until when), pending, or unavailable.
 - **Adopt** a bench by submitting a request, which park staff approve. There is no payment step.
 - **Share** a bench: every bench has its own link, e.g. `/bench/VCP-0142`.
-- **Staff dashboard** at `/staff`: approve requests, manage adoptions and benches, upload bench photos, and see adoption stats and upcoming renewals.
+- **Send photos or a message** about any bench (plaque installed, repair needed, a photo of the bench, questions), without emailing back and forth.
+- **Staff dashboard** at `/staff`: approve requests, work through an inbox of photos and messages, manage adoptions and benches (with a per-bench history), upload bench photos, and see adoption stats and upcoming renewals.
 
 ## Stack
 
@@ -22,6 +23,7 @@ supabase/
   migrations/20260922000000_init.sql   schema, rules, security, API functions
   migrations/20260923000000_bench_photo_limits.sql   photo bucket: images only, 5 MB max
   migrations/20260924000000_staff_email_domains.sql  staff access by confirmed email domain (@columbia.edu)
+  migrations/20260925000000_bench_submissions.sql    photos/messages about benches + private photo bucket
   seed.sql                             PLACEHOLDER benches + sample adoptions (dev only)
 data/
   benches_template.csv                 column format for importing the real inventory
