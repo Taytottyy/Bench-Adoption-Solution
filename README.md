@@ -123,10 +123,3 @@ the Supabase URL + publishable key and a MapTiler key, then `npm install && npm 
 
 - Restrict the MapTiler key to your site's origins (MapTiler Cloud → API keys → Allowed HTTP origins). It is visible in the browser.
 - Legend: available = green, adopted = red, pending = orange, not available = yellow, not surveyed = gray.
-
-## Known gaps / next steps
-
-- **Real bench inventory.** The seed locations are placeholders. Real coordinates are needed, either from the park or collected by walking the park with a phone.
-- **Future terms.** A bench with an approved term that hasn't started yet shows as `adopted`; the panel labels the term "Starts …".
-- Confirmation emails to donors (e.g. Supabase Edge Function + Resend).
-- Spam protection on `request_adoption` beyond the per-email cap (e.g. a CAPTCHA). Staff approval is the main safeguard.
