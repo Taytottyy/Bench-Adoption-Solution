@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import AdoptForm from "./AdoptForm";
-import { STATUS_META, formatDate, lastDay, photoUrl, todayISO, type Bench } from "@/lib/benches";
+import {
+  STATUS_META,
+  benchPath,
+  formatDate,
+  lastDay,
+  photoUrl,
+  todayISO,
+  type Bench,
+} from "@/lib/benches";
 
 export default function BenchPanel({
   bench,
@@ -31,11 +39,14 @@ export default function BenchPanel({
             {meta.label}
           </span>
         </div>
-        <button onClick={onClose} aria-label="Close" className="rounded-full p-1.5 text-stone-500 hover:bg-stone-100">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M5 5l10 10M15 5L5 15" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <ShareButton bench={bench} />
+          <button onClick={onClose} aria-label="Close" className="rounded-full p-1.5 text-stone-500 hover:bg-stone-100">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <div className="overflow-y-auto p-4">
@@ -101,5 +112,35 @@ function Row({ term, value }: { term: string; value: string | null }) {
       <dt className="text-stone-500">{term}</dt>
       <dd className="font-medium text-stone-900">{value}</dd>
     </div>
+  );
+}
+
+function ShareButton({ bench }: { bench: Bench }) {
+  const [copied, setCopied] = useState(false);
+
+  async function share() {
+    const url = new URL(benchPath(bench.code), window.location.origin).href;
+    const title = `Bench ${bench.code} · Van Cortlandt Park`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, url });
+      } catch {
+        // dismissed
+      }
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <button
+      onClick={share}
+      className="rounded-full px-2.5 py-1.5 text-xs font-medium text-green-800 hover:bg-green-50"
+      aria-label="Share link to this bench"
+    >
+      {copied ? "Link copied" : "Share"}
+    </button>
   );
 }

@@ -81,6 +81,20 @@ export default function BenchMap({
     latest.current = { benches, selectedId, onSelect };
   });
 
+  const flownTo = useRef<number | null>(null);
+  function focusSelected() {
+    const map = mapRef.current;
+    if (!map || !map.getLayer("bench-selected")) return;
+    const { selectedId, benches } = latest.current;
+    map.setFilter("bench-selected", ["==", ["get", "id"], selectedId ?? -1]);
+    const bench = benches.find((b) => b.id === selectedId);
+    if (bench && flownTo.current !== bench.id) {
+      flownTo.current = bench.id;
+      map.easeTo({ center: [bench.lng, bench.lat], zoom: Math.max(map.getZoom(), 16.5) });
+    }
+    if (selectedId === null) flownTo.current = null;
+  }
+
   // Create the map once.
   useEffect(() => {
     if (!container.current) return;
@@ -162,6 +176,7 @@ export default function BenchMap({
           "circle-stroke-width": 2,
         },
       });
+      focusSelected();
     });
 
     map.on("click", "benches", (e: MapLayerMouseEvent) => {
@@ -208,16 +223,12 @@ export default function BenchMap({
     source?.setData(toGeoJSON(benches));
   }, [benches]);
 
-  // Highlight and fly to the selected bench.
+  // Highlight and fly to the selected bench. A bench opened from a /bench/<code>
+  // link may be selected before the data or the map style has loaded, so this
+  // also runs when either arrives (see flownTo / "style.load").
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.getLayer("bench-selected")) return;
-    map.setFilter("bench-selected", ["==", ["get", "id"], selectedId ?? -1]);
-    const bench = latest.current.benches.find((b) => b.id === selectedId);
-    if (bench) {
-      map.easeTo({ center: [bench.lng, bench.lat], zoom: Math.max(map.getZoom(), 16.5) });
-    }
-  }, [selectedId]);
+    focusSelected();
+  }, [selectedId, benches]);
 
   // MapLibre's CSS sets position: relative on the map element, so size it via a wrapper.
   return (

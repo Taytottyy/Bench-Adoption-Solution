@@ -4,15 +4,22 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import BenchPanel from "./BenchPanel";
 import { SATELLITE_AVAILABLE, type BaseStyle } from "./BenchMap";
-import { STATUS_META, STATUS_ORDER, fetchBenches, type Bench, type BenchStatus } from "@/lib/benches";
+import {
+  STATUS_META,
+  STATUS_ORDER,
+  benchPath,
+  fetchBenches,
+  type Bench,
+  type BenchStatus,
+} from "@/lib/benches";
 
 // MapLibre needs the browser (WebGL), so skip server rendering.
 const BenchMap = dynamic(() => import("./BenchMap"), { ssr: false });
 
-export default function BenchApp() {
+export default function BenchApp({ initialBenchId = null }: { initialBenchId?: number | null }) {
   const [benches, setBenches] = useState<Bench[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(initialBenchId);
   const [hidden, setHidden] = useState<Set<BenchStatus>>(new Set());
   const [area, setArea] = useState("");
   const [query, setQuery] = useState("");
@@ -59,6 +66,20 @@ export default function BenchApp() {
 
   const selected = benches.find((b) => b.id === selectedId) ?? null;
 
+  // Keep the address bar on a shareable /bench/<code> link for the open bench.
+  const select = useCallback(
+    (id: number | null) => {
+      setSelectedId(id);
+      const bench = benches.find((b) => b.id === id);
+      const path = bench ? benchPath(bench.code) : "/";
+      if (window.location.pathname !== path) window.history.replaceState(null, "", path);
+      document.title = bench
+        ? `Bench ${bench.code} · Van Cortlandt Park`
+        : "Adopt-a-Bench · Van Cortlandt Park";
+    },
+    [benches],
+  );
+
   function toggleStatus(s: BenchStatus) {
     setHidden((prev) => {
       const next = new Set(prev);
@@ -70,7 +91,7 @@ export default function BenchApp() {
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-stone-200">
-      <BenchMap benches={visible} selectedId={selectedId} onSelect={setSelectedId} base={base} />
+      <BenchMap benches={visible} selectedId={selectedId} onSelect={select} base={base} />
 
       {/* Controls */}
       <section className="absolute left-3 right-3 top-3 z-10 sm:right-auto sm:w-80">
@@ -164,7 +185,7 @@ export default function BenchApp() {
             <BenchPanel
               key={selected.id}
               bench={selected}
-              onClose={() => setSelectedId(null)}
+              onClose={() => select(null)}
               onSubmitted={load}
             />
           </div>

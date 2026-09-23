@@ -54,6 +54,16 @@ export type AdoptionRequest = {
   showDonor: boolean;
 };
 
+export async function fetchBenchByCode(code: string): Promise<Bench | null> {
+  const { data, error } = await supabase.rpc("bench_map").eq("code", code).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as Bench | null;
+}
+
+export function benchPath(code: string) {
+  return `/bench/${encodeURIComponent(code)}`;
+}
+
 export async function requestAdoption(req: AdoptionRequest) {
   const { data, error } = await supabase.rpc("request_adoption", {
     p_bench_id: req.benchId,
