@@ -26,6 +26,33 @@ const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
 
 export type BaseStyle = "map" | "satellite";
 
+type Padding = { top: number; bottom: number; left: number; right: number };
+const NO_PADDING: Padding = { top: 0, bottom: 0, left: 0, right: 0 };
+
+// Space covered by BenchApp's floating overlays (marked with data-overlay),
+// measured live so the bench being looked at lands in the part of the map
+// that is actually visible, whatever the window size.
+function overlayPadding(map: MapLibreMap, panelOpen: boolean): Padding {
+  const box = map.getContainer().getBoundingClientRect();
+  const { width: w, height: h } = box;
+  const rect = (name: string) => document.querySelector(`[data-overlay="${name}"]`)?.getBoundingClientRect();
+  const card = rect("controls");
+  const panel = panelOpen ? rect("panel") : undefined;
+  const gap = 12;
+  const cardRight = card ? card.right - box.left + gap : 0;
+  const cardBottom = card ? card.bottom - box.top + gap : 0;
+
+  if (w >= 640) {
+    const right = panel ? box.right - panel.left + gap : 0;
+    // Room beside the card? Otherwise use the space below it.
+    if (w - cardRight - right >= 240) return { top: 0, bottom: 0, left: cardRight, right };
+    return { top: Math.min(cardBottom, h - 160), bottom: 0, left: 0, right };
+  }
+  // Phones: card on top, bench sheet at the bottom.
+  const bottom = panel ? box.bottom - panel.top + gap : 0;
+  return { top: Math.max(0, Math.min(cardBottom, h - bottom - 120)), bottom, left: 0, right: 0 };
+}
+
 // MapTiler when a key is configured; otherwise the keyless OpenFreeMap style
 // so the app still works during setup.
 function styleUrl(base: BaseStyle) {
@@ -45,6 +72,8 @@ type CirclePaint = CircleLayer["paint"];
 type FilterSpecification = NonNullable<CircleLayer["filter"]>;
 
 const SOURCE = "benches";
+const PULSE_SOURCE = "bench-pulse";
+const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 const ADOPTED_SOURCE = "benches-adopted";
 const POINT_LAYERS = ["benches", "benches-adopted"];
 const SELECTED_LAYERS = ["bench-selected", "bench-selected-adopted"];
@@ -96,11 +125,17 @@ export default function BenchMap({
   selectedId,
   onSelect,
   base,
+  fitKey = 0,
+  pulse = null,
 }: {
   benches: Bench[];
   selectedId: number | null;
   onSelect: (id: number | null) => void;
   base: BaseStyle;
+  /** Change to zoom the map to fit the current benches. */
+  fitKey?: number;
+  /** Play a ripple on this bench (n makes repeated pulses on one bench distinct). */
+  pulse?: { id: number; n: number } | null;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -119,9 +154,16 @@ export default function BenchMap({
     const bench = benches.find((b) => b.id === selectedId);
     if (bench && flownTo.current !== bench.id) {
       flownTo.current = bench.id;
-      map.easeTo({ center: [bench.lng, bench.lat], zoom: Math.max(map.getZoom(), 16.5) });
+      map.easeTo({
+        center: [bench.lng, bench.lat],
+        zoom: Math.max(map.getZoom(), 16.5),
+        padding: overlayPadding(map, true),
+      });
     }
-    if (selectedId === null) flownTo.current = null;
+    if (selectedId === null && flownTo.current !== null) {
+      flownTo.current = null;
+      map.easeTo({ padding: NO_PADDING, duration: 300 });
+    }
   }
 
   // Create the map once.
@@ -198,6 +240,13 @@ export default function BenchMap({
       };
       const selectedFilter: FilterSpecification = ["==", ["get", "id"], latest.current.selectedId ?? -1];
 
+      map.addSource(PULSE_SOURCE, { type: "geojson", data: EMPTY });
+      map.addLayer({
+        id: "bench-pulse",
+        type: "circle",
+        source: PULSE_SOURCE,
+        paint: { "circle-color": ["get", "color"], "circle-radius": 8, "circle-opacity": 0 },
+      });
       map.addLayer({ id: "bench-selected", type: "circle", source: SOURCE, filter: selectedFilter, paint: selectedPaint });
       map.addLayer({
         id: "benches",
@@ -283,6 +332,67 @@ export default function BenchMap({
     (map?.getSource(SOURCE) as GeoJSONSource | undefined)?.setData(data.clustered);
     (map?.getSource(ADOPTED_SOURCE) as GeoJSONSource | undefined)?.setData(data.adopted);
   }, [benches]);
+
+  // Ripple out from a bench, e.g. right after it was requested, so the status
+  // change is noticeable. Three ~0.9s rings in the bench's (new) color.
+  useEffect(() => {
+    const map = mapRef.current;
+    const bench = pulse && latest.current.benches.find((b) => b.id === pulse.id);
+    const source = map?.getSource(PULSE_SOURCE) as GeoJSONSource | undefined;
+    if (!map || !bench || !source) return;
+
+    source.setData({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [bench.lng, bench.lat] },
+          properties: { color: STATUS_META[bench.status].color },
+        },
+      ],
+    });
+    const PERIOD = 900;
+    const RINGS = 3;
+    const start = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      if (elapsed >= PERIOD * RINGS || !map.getLayer("bench-pulse")) {
+        source.setData(EMPTY);
+        return;
+      }
+      const phase = (elapsed % PERIOD) / PERIOD;
+      map.setPaintProperty("bench-pulse", "circle-radius", 8 + phase * 30);
+      map.setPaintProperty("bench-pulse", "circle-opacity", (1 - phase) * 0.55);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      source.setData(EMPTY);
+    };
+  }, [pulse]);
+
+  // Zoom to fit the given benches whenever fitKey changes (e.g. "Find a bench").
+  useEffect(() => {
+    const map = mapRef.current;
+    const { benches } = latest.current;
+    if (!fitKey || !map || benches.length === 0) return;
+    const lngs = benches.map((b) => b.lng);
+    const lats = benches.map((b) => b.lat);
+    const edge = overlayPadding(map, false);
+    map.setPadding(NO_PADDING);
+    map.fitBounds(
+      [
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ],
+      {
+        padding: { top: edge.top + 40, bottom: edge.bottom + 40, left: edge.left + 40, right: edge.right + 40 },
+        maxZoom: 16.5,
+      },
+    );
+  }, [fitKey]);
 
   // Highlight and fly to the selected bench. A bench opened from a /bench/<code>
   // link may be selected before the data or the map style has loaded, so this
