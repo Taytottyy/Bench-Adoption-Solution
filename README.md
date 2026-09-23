@@ -13,12 +13,17 @@ A single source of truth for Van Cortlandt Park's bench adoption program (500+ b
 | Layer | Choice |
 |---|---|
 | Database + API | [Supabase](https://supabase.com) (Postgres, auto-generated REST API, Auth, Storage) |
-| Frontend | Next.js ([`web/`](web/README.md)) |
+| Frontend | Next.js (App Router), deployed on Vercel |
 | Map | MapLibre GL JS + MapTiler styles (outdoor and satellite) |
 
-## Backend layout
+## Project layout
 
 ```
+src/
+  app/                                 pages: / (map), /bench/[code] (shareable link), /staff (dashboard)
+  components/                          map, bench panel, forms, list view; staff/ = dashboard tabs
+  lib/                                 Supabase calls (benches, staff, submissions)
+scripts/copy-maplibre-worker.mjs       serves MapLibre's web worker from public/ (runs before dev/build)
 supabase/
   migrations/20260922000000_init.sql   schema, rules, security, API functions
   migrations/20260923000000_bench_photo_limits.sql   photo bucket: images only, 5 MB max
@@ -120,8 +125,12 @@ Staff sign in with Supabase Auth and can also read and edit the `benches` and `a
 
 ## Frontend
 
-See [web/README.md](web/README.md). In short: `cd web && cp .env.example .env.local`, fill in
-the Supabase URL + publishable key and a MapTiler key, then `npm install && npm run dev`.
+```bash
+cp .env.example .env.local   # Supabase URL + publishable key, MapTiler key
+npm install
+npm run dev                  # http://localhost:3000
+```
 
+- **Deploying (Vercel):** import the repo with the default settings (`vercel.json` pins the Next.js framework) and add the three `NEXT_PUBLIC_…` variables from `.env.example`. Then add the site's domain to the MapTiler key's allowed origins and `https://<domain>/staff` to Supabase's Redirect URLs.
 - Restrict the MapTiler key to your site's origins (MapTiler Cloud → API keys → Allowed HTTP origins). It is visible in the browser.
 - Legend: available = green, adopted = red, pending = orange, not available = yellow, not surveyed = gray.

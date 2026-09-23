@@ -1,7 +1,28 @@
-.env
-.env.*
+# dependencies
+/node_modules
+.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+/build
+*.tsbuildinfo
+next-env.d.ts
+
+# copied from node_modules by scripts/copy-maplibre-worker.mjs
+/public/maplibre/
+
+# env files (secrets); the example is committed
+.env*
 !.env.example
-node_modules/
+
+# misc
 .DS_Store
+*.pem
+npm-debug.log*
+.vercel
+
+# supabase cli
 supabase/.temp/
 supabase/.branches/
