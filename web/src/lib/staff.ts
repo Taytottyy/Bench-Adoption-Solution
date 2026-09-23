@@ -40,10 +40,14 @@ function check<T>({ data, error }: { data: T; error: { message: string } | null 
   return data;
 }
 
-export async function isStaff(userId: string) {
-  const rows = check(await supabase.from("staff").select("user_id").eq("user_id", userId));
-  return (rows ?? []).length > 0;
+// Staff = listed in public.staff, or a confirmed email on a domain in
+// public.staff_domains (see migrations). Decided by the database.
+export async function isStaff() {
+  return Boolean(check(await supabase.rpc("is_staff")));
 }
+
+// Shown on the sign-in page only; access itself is decided by the database.
+export const STAFF_EMAIL_DOMAIN = "columbia.edu";
 
 export async function fetchAdoptions(): Promise<Adoption[]> {
   return check(

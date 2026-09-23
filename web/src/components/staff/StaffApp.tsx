@@ -5,7 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { fetchBenches, type Bench } from "@/lib/benches";
-import { fetchAdoptions, fetchBenchRecords, isStaff, type Adoption, type BenchRecord } from "@/lib/staff";
+import {
+  STAFF_EMAIL_DOMAIN,
+  fetchAdoptions,
+  fetchBenchRecords,
+  isStaff,
+  type Adoption,
+  type BenchRecord,
+} from "@/lib/staff";
 import Overview from "./Overview";
 import Requests from "./Requests";
 import Adoptions from "./Adoptions";
@@ -22,29 +29,38 @@ type Tab = (typeof TABS)[number];
 
 export default function StaffApp() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
-  const [staff, setStaff] = useState<boolean | undefined>(undefined);
+  const [recovering, setRecovering] = useState(false);
+  // Keyed by user so a different sign-in never reuses the previous answer.
+  const [access, setAccess] = useState<{ userId: string; staff: boolean } | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      if (event === "PASSWORD_RECOVERY") setRecovering(true);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
+  const userId = session?.user.id;
   useEffect(() => {
-    if (!session) return;
-    isStaff(session.user.id)
-      .then(setStaff)
-      .catch(() => setStaff(false));
-  }, [session]);
+    if (!userId) return;
+    isStaff()
+      .then((staff) => setAccess({ userId, staff }))
+      .catch(() => setAccess({ userId, staff: false }));
+  }, [userId]);
 
   if (session === undefined) return <Centered>Loading…</Centered>;
+  if (recovering && session) return <SetNewPassword onDone={() => setRecovering(false)} />;
   if (!session) return <SignIn />;
-  if (staff === undefined) return <Centered>Checking access…</Centered>;
-  if (!staff) {
+  if (access?.userId !== session.user.id) return <Centered>Checking access…</Centered>;
+  if (!access.staff) {
     return (
       <Centered>
-        <p className="font-medium">{session.user.email} isn&apos;t on the staff list.</p>
-        <p className="mt-1 text-sm text-stone-500">Ask an administrator to add your account.</p>
+        <p className="font-medium">{session.user.email} doesn&apos;t have staff access.</p>
+        <p className="mt-1 text-sm text-stone-500">
+          Sign in with your @{STAFF_EMAIL_DOMAIN} email, or ask an administrator to add your account.
+        </p>
         <button onClick={() => supabase.auth.signOut()} className="mt-4 text-sm font-medium text-green-800 underline">
           Sign out
         </button>
@@ -132,48 +148,149 @@ function Dashboard({ email }: { email: string }) {
   );
 }
 
+type Mode = "signIn" | "signUp" | "reset";
+
 function SignIn() {
+  const [mode, setMode] = useState<Mode>("signIn");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function switchTo(next: Mode) {
+    setMode(next);
+    setError(null);
+    setNotice(null);
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const email = String(f.get("email")).trim();
+    const password = String(f.get("password") ?? "");
+    // Where confirmation / reset links send people back to.
+    const redirectTo = `${window.location.origin}/staff`;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+
+    if (mode === "signIn") {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setError(error.message);
+    } else if (mode === "signUp") {
+      if (!email.toLowerCase().endsWith(`@${STAFF_EMAIL_DOMAIN}`)) {
+        setError(`Use your @${STAFF_EMAIL_DOMAIN} email address.`);
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } });
+        if (error) setError(error.message);
+        else setNotice(`Check ${email} for a confirmation link, then sign in.`);
+      }
+    } else {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) setError(error.message);
+      else setNotice(`If ${email} has an account, a password reset link is on its way.`);
+    }
+    setBusy(false);
+  }
+
+  const heading = { signIn: "Staff sign in", signUp: "Create a staff account", reset: "Reset your password" }[mode];
+  const action = { signIn: "Sign in", signUp: "Create account", reset: "Send reset link" }[mode];
+
+  return (
+    <Centered>
+      <form onSubmit={handleSubmit} className="w-full space-y-4 text-left">
+        <div>
+          <h1 className="text-lg font-semibold text-green-900">{heading}</h1>
+          <p className="text-sm text-stone-500">Adopt-a-Bench · Van Cortlandt Park</p>
+        </div>
+        <label className="block text-sm font-medium text-stone-700">
+          Email
+          <input
+            name="email"
+            type="email"
+            required
+            autoComplete="username"
+            placeholder={mode === "signUp" ? `you@${STAFF_EMAIL_DOMAIN}` : undefined}
+            className={INPUT}
+          />
+        </label>
+        {mode !== "reset" && (
+          <label className="block text-sm font-medium text-stone-700">
+            Password
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={mode === "signUp" ? 8 : undefined}
+              autoComplete={mode === "signUp" ? "new-password" : "current-password"}
+              className={INPUT}
+            />
+          </label>
+        )}
+        {error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+        {notice && <p className="rounded-md bg-green-50 p-3 text-sm text-green-900">{notice}</p>}
+        <button disabled={busy} className="w-full rounded-lg bg-green-800 py-2 text-sm font-semibold text-white hover:bg-green-900 disabled:opacity-60">
+          {busy ? "Please wait…" : action}
+        </button>
+
+        <div className="flex justify-between text-sm">
+          {mode === "signIn" ? (
+            <>
+              <button type="button" onClick={() => switchTo("signUp")} className="font-medium text-green-800 hover:underline">
+                Create account
+              </button>
+              <button type="button" onClick={() => switchTo("reset")} className="text-stone-500 hover:underline">
+                Forgot password?
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => switchTo("signIn")} className="font-medium text-green-800 hover:underline">
+              Back to sign in
+            </button>
+          )}
+        </div>
+        {mode === "signUp" && (
+          <p className="text-xs text-stone-500">
+            Staff access is for @{STAFF_EMAIL_DOMAIN} addresses. You&apos;ll need to confirm your email first.
+          </p>
+        )}
+      </form>
+    </Centered>
+  );
+}
+
+function SetNewPassword({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
     setBusy(true);
-    setError(null);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: String(f.get("email")),
-      password: String(f.get("password")),
-    });
-    if (error) setError(error.message);
+    const password = String(new FormData(e.currentTarget).get("password"));
+    const { error } = await supabase.auth.updateUser({ password });
     setBusy(false);
+    if (error) setError(error.message);
+    else onDone();
   }
 
-  const input =
-    "mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm focus:border-green-700 focus:outline-none focus:ring-1 focus:ring-green-700";
   return (
     <Centered>
       <form onSubmit={handleSubmit} className="w-full space-y-4 text-left">
-        <div>
-          <h1 className="text-lg font-semibold text-green-900">Staff sign in</h1>
-          <p className="text-sm text-stone-500">Adopt-a-Bench · Van Cortlandt Park</p>
-        </div>
+        <h1 className="text-lg font-semibold text-green-900">Choose a new password</h1>
         <label className="block text-sm font-medium text-stone-700">
-          Email
-          <input name="email" type="email" required autoComplete="username" className={input} />
-        </label>
-        <label className="block text-sm font-medium text-stone-700">
-          Password
-          <input name="password" type="password" required autoComplete="current-password" className={input} />
+          New password
+          <input name="password" type="password" required minLength={8} autoComplete="new-password" className={INPUT} />
         </label>
         {error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         <button disabled={busy} className="w-full rounded-lg bg-green-800 py-2 text-sm font-semibold text-white hover:bg-green-900 disabled:opacity-60">
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? "Saving…" : "Save password"}
         </button>
       </form>
     </Centered>
   );
 }
+
+const INPUT =
+  "mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm focus:border-green-700 focus:outline-none focus:ring-1 focus:ring-green-700";
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (

@@ -21,6 +21,7 @@ A single source of truth for Van Cortlandt Park's bench adoption program (500+ b
 supabase/
   migrations/20260922000000_init.sql   schema, rules, security, API functions
   migrations/20260923000000_bench_photo_limits.sql   photo bucket: images only, 5 MB max
+  migrations/20260924000000_staff_email_domains.sql  staff access by confirmed email domain (@columbia.edu)
   seed.sql                             PLACEHOLDER benches + sample adoptions (dev only)
 data/
   benches_template.csv                 column format for importing the real inventory
@@ -105,13 +106,15 @@ Staff sign in with Supabase Auth and can also read and edit the `benches` and `a
 3. Load benches:
    - **Dev:** run `supabase/seed.sql` for 42 placeholder benches with sample adoptions.
    - **Real data:** import a CSV in the format of `data/benches_template.csv` into `benches` (Table Editor → Import).
-4. Make a staff account:
-   1. **Authentication → Users → Add user → Create new user**. Enter their email and a password, and tick **Auto Confirm User**.
-   2. Copy the new user's **UID**, then run in the SQL Editor:
-      ```sql
-      insert into public.staff (user_id) values ('<user uid>');
-      ```
-   3. They can now sign in at `/staff`. Remove access with `delete from public.staff where user_id = '<user uid>';`.
+4. Staff access. Anyone with a **confirmed @columbia.edu** email is staff automatically. Other domains can be added to `public.staff_domains`.
+   - **Self sign-up:** staff click **Create account** at `/staff` and confirm their email. This needs:
+     - **Authentication → Sign In / Providers → Email:** "Allow new users to sign up" and "Confirm email" both **on** (the defaults).
+     - **Authentication → URL Configuration:** add `http://localhost:3000/staff` (and later the production `/staff` URL) to **Redirect URLs**.
+     - **Custom SMTP** (Authentication → Emails → SMTP settings). Supabase's built-in email only delivers to members of your Supabase organization, so other people won't receive confirmation or reset emails without it.
+   - **Add someone manually** (works without SMTP): **Authentication → Users → Add user → Create new user**, tick **Auto Confirm User**. A @columbia.edu address needs nothing else. For any other address, also run:
+     ```sql
+     insert into public.staff (user_id) values ('<user uid>');
+     ```
 
 ## Frontend
 
