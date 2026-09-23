@@ -38,7 +38,23 @@ function styleUrl(base: BaseStyle) {
 
 export const SATELLITE_AVAILABLE = Boolean(MAPTILER_KEY);
 
+// Adopted benches get their own unclustered source so they (and their donor
+// name labels) stay visible at every zoom; everything else clusters.
+type CircleLayer = Extract<Parameters<MapLibreMap["addLayer"]>[0], { type: "circle" }>;
+type CirclePaint = CircleLayer["paint"];
+type FilterSpecification = NonNullable<CircleLayer["filter"]>;
+
 const SOURCE = "benches";
+const ADOPTED_SOURCE = "benches-adopted";
+const POINT_LAYERS = ["benches", "benches-adopted"];
+const SELECTED_LAYERS = ["bench-selected", "bench-selected-adopted"];
+
+function splitBenches(benches: Bench[]) {
+  return {
+    clustered: toGeoJSON(benches.filter((b) => b.status !== "adopted")),
+    adopted: toGeoJSON(benches.filter((b) => b.status === "adopted")),
+  };
+}
 
 function toGeoJSON(benches: Bench[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
   return {
@@ -47,19 +63,32 @@ function toGeoJSON(benches: Bench[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
       type: "Feature",
       id: b.id,
       geometry: { type: "Point", coordinates: [b.lng, b.lat] },
-      properties: { id: b.id, code: b.code, color: STATUS_META[b.status].color },
+      properties: {
+        id: b.id,
+        code: b.code,
+        color: STATUS_META[b.status].color,
+        // Only adopted benches carry a donor name (see bench_map()).
+        ...(b.status === "adopted" && b.donor_name ? { donor: b.donor_name } : {}),
+      },
     })),
   };
 }
 
-// Reuse whatever font the base style already ships, so cluster labels render
-// on any style without guessing font names.
-function styleFont(style: StyleSpecification): string[] {
+// Reuse a font the base style already ships, so our labels render on any
+// style without guessing font names. Prefer an upright one (water and park
+// labels are often italic).
+function styleFont(style: StyleSpecification, weight: "Regular" | "Bold" = "Regular"): string[] {
+  const fonts: string[][] = [];
   for (const layer of style.layers) {
     const font = layer.type === "symbol" ? layer.layout?.["text-font"] : undefined;
-    if (Array.isArray(font) && font.every((f) => typeof f === "string")) return font as string[];
+    if (Array.isArray(font) && font.every((f) => typeof f === "string")) fonts.push(font as string[]);
   }
-  return ["Noto Sans Regular"];
+  const upright = fonts.filter((f) => !f.some((name) => /italic/i.test(name)));
+  return (
+    upright.find((f) => f[0]?.includes(weight)) ??
+    upright[0] ??
+    fonts[0] ?? ["Noto Sans Regular"]
+  );
 }
 
 export default function BenchMap({
@@ -86,7 +115,7 @@ export default function BenchMap({
     const map = mapRef.current;
     if (!map || !map.getLayer("bench-selected")) return;
     const { selectedId, benches } = latest.current;
-    map.setFilter("bench-selected", ["==", ["get", "id"], selectedId ?? -1]);
+    for (const layer of SELECTED_LAYERS) map.setFilter(layer, ["==", ["get", "id"], selectedId ?? -1]);
     const bench = benches.find((b) => b.id === selectedId);
     if (bench && flownTo.current !== bench.id) {
       flownTo.current = bench.id;
@@ -119,13 +148,16 @@ export default function BenchMap({
     // so (re)add them on every style load.
     map.on("style.load", () => {
       const font = styleFont(map.getStyle());
+      const boldFont = styleFont(map.getStyle(), "Bold");
+      const data = splitBenches(latest.current.benches);
       map.addSource(SOURCE, {
         type: "geojson",
-        data: toGeoJSON(latest.current.benches),
+        data: data.clustered,
         cluster: true,
         clusterRadius: 36,
         clusterMaxZoom: 15,
       });
+      map.addSource(ADOPTED_SOURCE, { type: "geojson", data: data.adopted });
       map.addLayer({
         id: "clusters",
         type: "circle",
@@ -152,34 +184,61 @@ export default function BenchMap({
         },
         paint: { "text-color": "#ffffff" },
       });
-      map.addLayer({
-        id: "bench-selected",
-        type: "circle",
-        source: SOURCE,
-        filter: ["==", ["get", "id"], latest.current.selectedId ?? -1],
-        paint: {
-          "circle-radius": 14,
-          "circle-color": "rgba(0,0,0,0)",
-          "circle-stroke-color": "#111111",
-          "circle-stroke-width": 3,
-        },
-      });
+      const pointPaint: CirclePaint = {
+        "circle-color": ["get", "color"],
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 6, 18, 10],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2,
+      };
+      const selectedPaint: CirclePaint = {
+        "circle-radius": 14,
+        "circle-color": "rgba(0,0,0,0)",
+        "circle-stroke-color": "#111111",
+        "circle-stroke-width": 3,
+      };
+      const selectedFilter: FilterSpecification = ["==", ["get", "id"], latest.current.selectedId ?? -1];
+
+      map.addLayer({ id: "bench-selected", type: "circle", source: SOURCE, filter: selectedFilter, paint: selectedPaint });
       map.addLayer({
         id: "benches",
         type: "circle",
         source: SOURCE,
         filter: ["!", ["has", "point_count"]],
+        paint: pointPaint,
+      });
+      map.addLayer({
+        id: "bench-selected-adopted",
+        type: "circle",
+        source: ADOPTED_SOURCE,
+        filter: selectedFilter,
+        paint: selectedPaint,
+      });
+      map.addLayer({ id: "benches-adopted", type: "circle", source: ADOPTED_SOURCE, paint: pointPaint });
+      map.addLayer({
+        id: "bench-donor-labels",
+        type: "symbol",
+        source: ADOPTED_SOURCE,
+        filter: ["has", "donor"],
+        layout: {
+          "text-field": ["get", "donor"],
+          "text-font": boldFont,
+          "text-size": 12,
+          // Try below the pin first, then other sides, so nearby names don't hide each other.
+          "text-variable-anchor": ["top", "bottom", "right", "left"],
+          "text-radial-offset": 0.9,
+          "text-justify": "auto",
+          "text-max-width": 10,
+        },
         paint: {
-          "circle-color": ["get", "color"],
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 14, 6, 18, 10],
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 2,
+          "text-color": STATUS_META.adopted.color,
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.5,
         },
       });
       focusSelected();
     });
 
-    map.on("click", "benches", (e: MapLayerMouseEvent) => {
+    map.on("click", POINT_LAYERS, (e: MapLayerMouseEvent) => {
       const id = e.features?.[0]?.properties?.id;
       if (typeof id === "number") latest.current.onSelect(id);
     });
@@ -194,10 +253,10 @@ export default function BenchMap({
       });
     });
     map.on("click", (e) => {
-      const hits = map.queryRenderedFeatures(e.point, { layers: ["benches", "clusters"] });
+      const hits = map.queryRenderedFeatures(e.point, { layers: [...POINT_LAYERS, "clusters"] });
       if (hits.length === 0) latest.current.onSelect(null);
     });
-    for (const layer of ["benches", "clusters"]) {
+    for (const layer of [...POINT_LAYERS, "clusters"]) {
       map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
       map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
     }
@@ -219,8 +278,10 @@ export default function BenchMap({
 
   // Push filtered benches into the source.
   useEffect(() => {
-    const source = mapRef.current?.getSource(SOURCE) as GeoJSONSource | undefined;
-    source?.setData(toGeoJSON(benches));
+    const map = mapRef.current;
+    const data = splitBenches(benches);
+    (map?.getSource(SOURCE) as GeoJSONSource | undefined)?.setData(data.clustered);
+    (map?.getSource(ADOPTED_SOURCE) as GeoJSONSource | undefined)?.setData(data.adopted);
   }, [benches]);
 
   // Highlight and fly to the selected bench. A bench opened from a /bench/<code>
