@@ -24,12 +24,14 @@ src/
   components/                          map, bench panel, forms, list view; staff/ = dashboard tabs
   lib/                                 Supabase calls (benches, staff, submissions)
 scripts/copy-maplibre-worker.mjs       serves MapLibre's web worker from public/ (runs before dev/build)
+scripts/demo/generate_demo_data.py     regenerates supabase/demo/demo_data.sql from OpenStreetMap
 supabase/
   migrations/20260922000000_init.sql   schema, rules, security, API functions
   migrations/20260923000000_bench_photo_limits.sql   photo bucket: images only, 5 MB max
   migrations/20260924000000_staff_email_domains.sql  staff access by confirmed email domain (@columbia.edu)
   migrations/20260925000000_bench_submissions.sql    photos/messages about benches + private photo bucket
-  seed.sql                             PLACEHOLDER benches + sample adoptions (dev only)
+  seed.sql                             small placeholder set (42 benches) for local development
+  demo/demo_data.sql                   DEMO DATA: 520 benches + adoptions + inbox messages (also the demo reset)
 data/
   benches_template.csv                 column format for importing the real inventory
 ```
@@ -111,6 +113,7 @@ Staff sign in with Supabase Auth and can also read and edit the `benches` and `a
    - **Dashboard:** open the SQL Editor, then paste and run each file in `supabase/migrations/` in order, or
    - **CLI:** `supabase init` (keeps the existing `migrations/`), then `supabase link --project-ref <ref>`, then `supabase db push`.
 3. Load benches:
+   - **Demo:** run `supabase/demo/demo_data.sql` for 520 benches with realistic adoptions and inbox messages. **It replaces all benches, adoptions and messages**, so re-running it resets a demo. Bench locations come from © OpenStreetMap contributors (ODbL); donors are fictional.
    - **Dev:** run `supabase/seed.sql` for 42 placeholder benches with sample adoptions.
    - **Real data:** import a CSV in the format of `data/benches_template.csv` into `benches` (Table Editor → Import).
 4. Staff access. Anyone with a **confirmed @columbia.edu** email is staff automatically. Other domains can be added to `public.staff_domains`.
