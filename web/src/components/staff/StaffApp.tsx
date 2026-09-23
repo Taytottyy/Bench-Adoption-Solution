@@ -13,7 +13,9 @@ import {
   type Adoption,
   type BenchRecord,
 } from "@/lib/staff";
+import { fetchSubmissions, type Submission } from "@/lib/submissions";
 import Overview from "./Overview";
+import Inbox from "./Inbox";
 import Requests from "./Requests";
 import Adoptions from "./Adoptions";
 import BenchesAdmin from "./BenchesAdmin";
@@ -22,9 +24,10 @@ export type StaffData = {
   benches: Bench[]; // public view with derived status
   records: BenchRecord[]; // raw bench rows (editable)
   adoptions: Adoption[];
+  submissions: Submission[];
 };
 
-const TABS = ["Overview", "Requests", "Adoptions", "Benches"] as const;
+const TABS = ["Overview", "Requests", "Inbox", "Adoptions", "Benches"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function StaffApp() {
@@ -77,12 +80,13 @@ function Dashboard({ email }: { email: string }) {
 
   const reload = useCallback(async () => {
     try {
-      const [benches, records, adoptions] = await Promise.all([
+      const [benches, records, adoptions, submissions] = await Promise.all([
         fetchBenches(),
         fetchBenchRecords(),
         fetchAdoptions(),
+        fetchSubmissions(),
       ]);
-      setData({ benches, records, adoptions });
+      setData({ benches, records, adoptions, submissions });
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load data");
@@ -94,7 +98,10 @@ function Dashboard({ email }: { email: string }) {
     reload();
   }, [reload]);
 
-  const pending = data?.adoptions.filter((a) => a.status === "pending").length ?? 0;
+  const badges: Partial<Record<Tab, number>> = {
+    Requests: data?.adoptions.filter((a) => a.status === "pending").length ?? 0,
+    Inbox: data?.submissions.filter((s) => s.status === "new").length ?? 0,
+  };
 
   return (
     <div className="min-h-dvh bg-stone-100">
@@ -122,8 +129,8 @@ function Dashboard({ email }: { email: string }) {
               }`}
             >
               {t}
-              {t === "Requests" && pending > 0 && (
-                <span className="ml-1.5 rounded-full bg-orange-500 px-1.5 py-0.5 text-xs text-white">{pending}</span>
+              {(badges[t] ?? 0) > 0 && (
+                <span className="ml-1.5 rounded-full bg-orange-500 px-1.5 py-0.5 text-xs text-white">{badges[t]}</span>
               )}
             </button>
           ))}
@@ -138,6 +145,8 @@ function Dashboard({ email }: { email: string }) {
           <Overview data={data} />
         ) : tab === "Requests" ? (
           <Requests data={data} reload={reload} />
+        ) : tab === "Inbox" ? (
+          <Inbox data={data} reload={reload} />
         ) : tab === "Adoptions" ? (
           <Adoptions data={data} reload={reload} />
         ) : (

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { STATUS_META, benchPath, photoUrl } from "@/lib/benches";
+import { Fragment, useMemo, useRef, useState } from "react";
+import { STATUS_META, benchPath, formatDate, lastDay, photoUrl } from "@/lib/benches";
+import { TOPIC_LABEL } from "@/lib/submissions";
 import {
   PHOTO_TYPES,
   removeBenchPhoto,
@@ -59,11 +60,18 @@ export default function BenchesAdmin({ data, reload }: { data: StaffData; reload
               <th className="px-4 py-2 font-medium">Condition</th>
               <th className="px-4 py-2 font-medium">Area</th>
               <th className="px-4 py-2 font-medium">Public notes</th>
+              <th className="px-4 py-2 font-medium">History</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
             {rows.map((b) => (
-              <BenchRow key={b.id} bench={b} status={statusById.get(b.id)} reload={reload} />
+              <BenchRow
+                key={b.id}
+                bench={b}
+                status={statusById.get(b.id)}
+                history={historyFor(data, b.id)}
+                reload={reload}
+              />
             ))}
           </tbody>
         </table>
@@ -72,15 +80,45 @@ export default function BenchesAdmin({ data, reload }: { data: StaffData; reload
   );
 }
 
+type HistoryItem = { key: string; date: string; kind: string; title: string; detail?: string | null };
+
+// Everything recorded about one bench, newest first.
+function historyFor(data: StaffData, benchId: number): HistoryItem[] {
+  const items: HistoryItem[] = [
+    ...data.adoptions
+      .filter((a) => a.bench_id === benchId)
+      .map((a) => ({
+        key: `a${a.id}`,
+        date: a.created_at,
+        kind: "Adoption",
+        title: `${a.donor_name}: ${formatDate(a.starts_on)} – ${lastDay(a.ends_on)} (${a.status})`,
+        detail: [a.honoree && `In honor of ${a.honoree}`, a.staff_notes].filter(Boolean).join(" · ") || null,
+      })),
+    ...data.submissions
+      .filter((s) => s.bench_id === benchId)
+      .map((s) => ({
+        key: `s${s.id}`,
+        date: s.created_at,
+        kind: TOPIC_LABEL[s.topic],
+        title: `${s.contact_name}${s.photo_paths.length ? ` · ${s.photo_paths.length} photo${s.photo_paths.length > 1 ? "s" : ""}` : ""} (${s.status.replace("_", " ")})`,
+        detail: [s.message, s.staff_notes && `Staff: ${s.staff_notes}`].filter(Boolean).join(" · ") || null,
+      })),
+  ];
+  return items.sort((a, b) => b.date.localeCompare(a.date));
+}
+
 function BenchRow({
   bench,
   status,
+  history,
   reload,
 }: {
   bench: BenchRecord;
   status: keyof typeof STATUS_META | undefined;
+  history: HistoryItem[];
   reload: () => Promise<void>;
 }) {
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -108,6 +146,7 @@ function BenchRow({
   const input = "w-full rounded-md border border-transparent px-2 py-1 hover:border-stone-300 focus:border-green-700 focus:outline-none disabled:opacity-60";
 
   return (
+    <Fragment>
     <tr className="align-top">
       <td className="px-4 py-2">
         <div className="flex items-center gap-2">
@@ -192,6 +231,32 @@ function BenchRow({
           aria-label={`Notes for bench ${bench.code}`}
         />
       </td>
+      <td className="whitespace-nowrap px-4 py-2">
+        {history.length > 0 ? (
+          <button onClick={() => setOpen((o) => !o)} className="text-xs font-medium text-green-800 hover:underline" aria-expanded={open}>
+            {open ? "Hide" : `View (${history.length})`}
+          </button>
+        ) : (
+          <span className="text-xs text-stone-400">None</span>
+        )}
+      </td>
     </tr>
+    {open && (
+      <tr className="bg-stone-50">
+        <td colSpan={7} className="px-4 py-3">
+          {/* Stays in view when the wide table is scrolled sideways. */}
+          <ol className="sticky left-4 max-w-[calc(100vw-4rem)] space-y-2 border-l-2 border-stone-200 pl-4 sm:max-w-3xl">
+            {history.map((h) => (
+              <li key={h.key} className="text-sm">
+                <span className="text-xs text-stone-500">{formatDate(h.date.slice(0, 10))}</span>{" "}
+                <span className="font-medium">{h.kind}</span> · {h.title}
+                {h.detail && <p className="text-xs text-stone-600">{h.detail}</p>}
+              </li>
+            ))}
+          </ol>
+        </td>
+      </tr>
+    )}
+    </Fragment>
   );
 }

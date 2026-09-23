@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import AdoptForm from "./AdoptForm";
+import MessageForm from "./MessageForm";
 import {
   STATUS_META,
   benchPath,
@@ -21,7 +22,7 @@ export default function BenchPanel({
   onClose: () => void;
   onSubmitted: () => void;
 }) {
-  const [adopting, setAdopting] = useState(false);
+  const [mode, setMode] = useState<"view" | "adopt" | "message">("view");
   const meta = STATUS_META[bench.status];
   const adoptable = bench.status !== "unavailable" && bench.status !== "unsurveyed";
   const future = bench.adopted_from && bench.adopted_from > todayISO();
@@ -50,8 +51,10 @@ export default function BenchPanel({
       </header>
 
       <div className="overflow-y-auto p-4">
-        {adopting ? (
-          <AdoptForm bench={bench} onCancel={() => setAdopting(false)} onSubmitted={onSubmitted} />
+        {mode === "adopt" ? (
+          <AdoptForm bench={bench} onCancel={() => setMode("view")} onSubmitted={onSubmitted} />
+        ) : mode === "message" ? (
+          <MessageForm bench={bench} onCancel={() => setMode("view")} />
         ) : (
           <div className="space-y-4">
             {bench.photo_path && (
@@ -87,7 +90,7 @@ export default function BenchPanel({
             {adoptable && (
               <div>
                 <button
-                  onClick={() => setAdopting(true)}
+                  onClick={() => setMode("adopt")}
                   className="w-full rounded-lg bg-green-800 py-2.5 text-sm font-semibold text-white hover:bg-green-900"
                 >
                   {bench.status === "available" ? "Adopt this bench" : "Request the next term"}
@@ -99,6 +102,17 @@ export default function BenchPanel({
                 )}
               </div>
             )}
+
+            <button
+              onClick={() => setMode("message")}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M4 7h3l2-3h6l2 3h3v12H4z" />
+                <circle cx="12" cy="13" r="3.5" />
+              </svg>
+              Send photos or a message
+            </button>
           </div>
         )}
       </div>
