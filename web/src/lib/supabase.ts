@@ -9,6 +9,6 @@ if (!url || !key) {
   );
 }
 
-export const supabase = createClient(url, key, {
-  auth: { persistSession: false },
-});
+// Public pages only use the anon role; the staff dashboard signs in with the
+// same client, so sessions are persisted (in the browser) by default.
+export const supabase = createClient(url, key);

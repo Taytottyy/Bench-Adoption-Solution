@@ -4,6 +4,8 @@ A single source of truth for Van Cortlandt Park's bench adoption program (500+ b
 
 - **View** every bench on a map: available, adopted (by whom, until when), pending, or unavailable.
 - **Adopt** a bench by submitting a request, which park staff approve. There is no payment step.
+- **Share** a bench: every bench has its own link, e.g. `/bench/VCP-0142`.
+- **Staff dashboard** at `/staff`: approve requests, manage adoptions and benches, upload bench photos, and see adoption stats and upcoming renewals.
 
 ## Stack
 
@@ -18,6 +20,7 @@ A single source of truth for Van Cortlandt Park's bench adoption program (500+ b
 ```
 supabase/
   migrations/20260922000000_init.sql   schema, rules, security, API functions
+  migrations/20260923000000_bench_photo_limits.sql   photo bucket: images only, 5 MB max
   seed.sql                             PLACEHOLDER benches + sample adoptions (dev only)
 data/
   benches_template.csv                 column format for importing the real inventory
@@ -97,15 +100,18 @@ Staff sign in with Supabase Auth and can also read and edit the `benches` and `a
 
 1. Create a Supabase project at https://supabase.com/dashboard.
 2. Apply the schema, either:
-   - **Dashboard:** open the SQL Editor, then paste and run `supabase/migrations/20260922000000_init.sql`, or
+   - **Dashboard:** open the SQL Editor, then paste and run each file in `supabase/migrations/` in order, or
    - **CLI:** `supabase init` (keeps the existing `migrations/`), then `supabase link --project-ref <ref>`, then `supabase db push`.
 3. Load benches:
    - **Dev:** run `supabase/seed.sql` for 42 placeholder benches with sample adoptions.
    - **Real data:** import a CSV in the format of `data/benches_template.csv` into `benches` (Table Editor → Import).
-4. Make a staff account: create the user under **Authentication → Users**, then run:
-   ```sql
-   insert into public.staff (user_id) values ('<user uuid>');
-   ```
+4. Make a staff account:
+   1. **Authentication → Users → Add user → Create new user**. Enter their email and a password, and tick **Auto Confirm User**.
+   2. Copy the new user's **UID**, then run in the SQL Editor:
+      ```sql
+      insert into public.staff (user_id) values ('<user uid>');
+      ```
+   3. They can now sign in at `/staff`. Remove access with `delete from public.staff where user_id = '<user uid>';`.
 
 ## Frontend
 
@@ -119,6 +125,5 @@ the Supabase URL + publishable key and a MapTiler key, then `npm install && npm 
 
 - **Real bench inventory.** The seed locations are placeholders. Real coordinates are needed, either from the park or collected by walking the park with a phone.
 - **Future terms.** A bench with an approved term that hasn't started yet shows as `adopted`; the panel labels the term "Starts …".
-- **Staff screen.** Approving requests currently happens in the Supabase dashboard or via `review_adoption`; a staff page is next.
 - Confirmation emails to donors (e.g. Supabase Edge Function + Resend).
 - Spam protection on `request_adoption` beyond the per-email cap (e.g. a CAPTCHA). Staff approval is the main safeguard.
